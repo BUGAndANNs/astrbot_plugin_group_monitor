@@ -5,7 +5,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api import logger
 
-@register("group_link_monitor", "花忤", "进群关联监控插件，支持规则别名与群主/群管管理，未加关联群禁言/踢出，进群自动@提醒，加入目标群自动解除禁言", "v1.5.0")
+@register("group_link_monitor", "南一", "进群关联监控插件，支持规则别名与群主/群管管理，未加关联群禁言/踢出，进群自动@提醒，加入目标群自动解除禁言", "v1.5.0")
 class GroupLinkMonitor(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -287,7 +287,7 @@ class GroupLinkMonitor(Star):
         try:
             d_str = self._fmt_duration(delay)
             punish_text = "禁言" if punish == "mute" else "踢出群聊"
-            msg = f" 欢迎入群！\n⚠️ 本群已开启主从群关联验证，请在【{d_str}】内加入目标群【{target_g}】，逾期未加将自动执行【{punish_text}】处罚！"
+            msg = f" 欢迎入群！\n⚠️ 本群已开启主从群关联验证，请在【{d_str}】内加入目标群【{target_g}】，逾期未加将自动执行【{punish_text}】处罚！处罚为禁言时加入目标群则自动解除禁言！！"
 
             try:
                 await bot.api.call_action("send_group_msg", group_id=int(g_id), message=[
