@@ -1,0 +1,47 @@
+{
+  "rules": {
+    "type": "template_list",
+    "description": "群关联监控规则列表",
+    "hint": "配置哪些群需要联动监控。时间字段单位为秒，插件会自动换算显示。",
+    "templates": {
+      "group_rule": {
+        "name": "监控规则",
+        "display_item": "name",
+        "items": {
+          "name": {
+            "type": "string",
+            "description": "规则名称/备注 (留空自动使用监控群号)",
+            "default": ""
+          },
+          "group1": {
+            "type": "string",
+            "description": "监控群号 (进群的群)",
+            "default": ""
+          },
+          "group2": {
+            "type": "string",
+            "description": "目标群号 (必须在的群)",
+            "default": ""
+          },
+          "punish": {
+            "type": "string",
+            "description": "惩罚动作",
+            "options": ["mute", "kick"],
+            "default": "mute"
+          },
+          "delay": {
+            "type": "int",
+            "description": "缓冲时间(秒) - 进群后等待多久检测，86400=1天",
+            "default": 60
+          },
+          "mute_duration": {
+            "type": "int",
+            "description": "禁言时长(秒) - 默认86400(1天)，可填自定义秒数",
+            "default": 86400
+          }
+        }
+      }
+    },
+    "default": []
+  }
+}
