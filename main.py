@@ -478,6 +478,18 @@ class GroupLinkMonitor(Star):
         # 改用本插件自行维护的「目标群成员名单」（见 monitor_join 的入群/退群事件）。
         if str(uid) in self.target_members.get(str(g2), set()):
             logger.info(f"用户 {uid} 已在目标群 {g2}，跳过惩罚。")
+            # 等待时间已过，用户此前已加入目标群：在监控群 @ 提醒本人未执行惩罚
+            try:
+                msg = "你在此之前已加入目标群，未执行任何惩罚！"
+                try:
+                    await bot.api.call_action("send_group_msg", group_id=int(g1), message=[
+                        {"type": "at", "data": {"qq": str(uid)}},
+                        {"type": "text", "data": {"text": msg}}
+                    ])
+                except Exception:
+                    await bot.api.call_action("send_group_msg", group_id=int(g1), message=f"[CQ:at,qq={uid}]{msg}")
+            except Exception as e:
+                logger.error(f"发送「未执行惩罚」提醒失败: {e}")
             return
 
         try:
