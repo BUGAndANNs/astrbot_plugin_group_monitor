@@ -25,6 +25,11 @@ class GroupLinkMonitor(Star):
         if changed:
             self.save_rules()
 
+        # 冷启动预热：尝试初始化各目标群成员名单（best-effort，适配器未就绪则静默跳过；
+        # 若启动后未及时预热，可随时用「群监控重建缓存」手动刷新，解决「早于插件启动前
+        # 就已在目标群的老成员，后加入监控群却被误罚」的盲区）
+        asyncio.create_task(self._seed_target_members())
+
     def save_rules(self):
         try:
             for r in self.rules:
@@ -191,6 +196,23 @@ class GroupLinkMonitor(Star):
             yield event.plain_result("✅ 已关闭原始事件日志。")
         else:
             yield event.plain_result(f"当前原始事件日志: {'开启' if self.debug_raw else '关闭'}。用法：群监控调试 开/关")
+
+    @filter.command("群监控重建缓存")
+    async def rebuild_cache(self, event: AstrMessageEvent):
+        """诊断：重建目标群成员名单缓存（解决「早于插件启动前已在目标群的老成员被误罚」问题）"""
+        if not self._is_authorized(event):
+            yield event.plain_result("❌ 权限不足：该命令仅限群主、群管理员或 Bot 管理员使用。")
+            return
+        yield event.plain_result("🔄 正在重建目标群成员名单缓存……")
+        await self._seed_target_members(event.bot)
+        lines = ["✅ 目标群成员名单已重建："]
+        for r in self.rules:
+            g2 = str(r.get("group2", ""))
+            n = len(self.target_members.get(g2, set()))
+            lines.append(f"· 目标群{g2}: {n} 人")
+        lines.append("")
+        lines.append("说明：此名单用于判断「对方是否已加目标群」。若 SnowLuma 的 get_group_member_list 也不可用，数字可能为 0，此时仍可能误罚已合规老成员（建议改用 NapCat，或让对方退群重加以触发事件）。")
+        yield event.plain_result("\n".join(lines))
     # ===================== 诊断指令结束 =====================
 
     @filter.command("群监控帮助")
@@ -220,7 +242,7 @@ class GroupLinkMonitor(Star):
             "   - 例: 设置惩罚 1 禁言 1天 2小时 (禁言1天，缓冲2小时)\n"
             "----------------------------\n"
             "提示：已支持加入目标群自动解除群一禁言！\n"
-            "【诊断】群监控自检 / 群监控测试 <群号> <QQ> / 群监控调试 开|关"
+            "【诊断】群监控自检 / 群监控测试 <群号> <QQ> / 群监控调试 开|关 / 群监控重建缓存"
         )
 
     @filter.command("添加群监控")
@@ -412,6 +434,43 @@ class GroupLinkMonitor(Star):
                 await bot.api.call_action("send_group_msg", group_id=int(g_id), message=f"[CQ:at,qq={u_id}]{msg}")
         except Exception as e:
             logger.error(f"发送入群提示失败: {e}")
+
+    async def _seed_target_members(self, bot=None):
+        """预热目标群(g2)成员名单，解决「冷启动」盲区：
+
+        用户早于插件启动前就已在目标群，后加入监控群时，事件缓存里没有他，
+        会被误判为「未加目标群」而错误惩罚。此函数通过 get_group_member_list
+        初始化缓存。bot 为 None 时尝试从 aiocqhttp 适配器取 client；传入
+        event.bot 则直接用（诊断指令场景下保证能拿到可用 client）。
+        """
+        try:
+            if bot is None:
+                platform = self.context.get_platform("aiocqhttp")
+                if not platform:
+                    return
+                bot = platform.get_client()
+            if not bot:
+                return
+            call_action = bot.call_action if hasattr(bot, "call_action") else bot.api.call_action
+            for r in self.rules:
+                g2 = str(r.get("group2", ""))
+                if not g2:
+                    continue
+                try:
+                    res = await call_action("get_group_member_list", group_id=int(g2))
+                    members = res.get("data", res) if isinstance(res, dict) else res
+                    uids = set()
+                    if isinstance(members, list):
+                        for m in members:
+                            uid = m.get("user_id") if isinstance(m, dict) else None
+                            if uid is not None:
+                                uids.add(str(uid))
+                    self.target_members[g2] = uids
+                    logger.info(f"[群监控] 已预热目标群 {g2} 成员名单，共 {len(uids)} 人。")
+                except Exception as e:
+                    logger.warning(f"[群监控] 预热目标群 {g2} 成员列表失败（可能 SnowLuma 未实现 get_group_member_list）: {e}")
+        except Exception as e:
+            logger.warning(f"[群监控] 预热目标群成员缓存失败: {e}")
 
     async def _check_and_punish(self, bot, g1: str, g2: str, uid: str, punish: str, delay: int, mute_sec: int = 86400):
         await asyncio.sleep(delay)
